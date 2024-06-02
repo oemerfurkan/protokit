@@ -3,7 +3,7 @@ import { Client, useClientStore } from "./client";
 import { immer } from "zustand/middleware/immer";
 import { PendingTransaction, UnsignedTransaction } from "@proto-kit/sequencer";
 import { BalancesKey, TokenId } from "@proto-kit/library";
-import { PublicKey, UInt64 } from "o1js";
+import { Field, PublicKey, UInt64 } from "o1js";
 import { useCallback, useEffect } from "react";
 import { useChainStore } from "./chain";
 import { useWalletStore } from "./wallet";
@@ -16,6 +16,7 @@ export interface BalancesState {
   };
   loadBalance: (client: Client, address: string) => Promise<void>;
   faucet: (client: Client, address: string) => Promise<PendingTransaction>;
+  humanId: (client: Client, humanId: number, address: string) => Promise<PendingTransaction>;
 }
 
 function isPendingTransaction(
@@ -62,6 +63,22 @@ export const useBalancesStore = create<
       isPendingTransaction(tx.transaction);
       return tx.transaction;
     },
+
+    async humanId(client: Client, humanId: number, address: string) {
+      const humanIds = client.runtime.resolve("HumanIds");
+      const humanIdUint64 = Field.from(humanId);
+      const sender = PublicKey.fromBase58(address);
+
+      const tx = await client.transaction(sender, () => {
+        humanIds.addHumanId(humanIdUint64);
+      });
+
+      await tx.sign();
+      await tx.send();
+
+      isPendingTransaction(tx.transaction);
+      return tx.transaction;
+    }
   })),
 );
 
@@ -89,6 +106,24 @@ export const useFaucet = () => {
     const pendingTransaction = await balances.faucet(
       client.client,
       wallet.wallet,
+    );
+
+    wallet.addPendingTransaction(pendingTransaction);
+  }, [client.client, wallet.wallet]);
+};
+
+export const useHumanId = () => {
+  const client = useClientStore();
+  const balances = useBalancesStore();
+  const wallet = useWalletStore();
+
+  return useCallback(async () => {
+    if (!client.client || !wallet.wallet) return;
+
+    const pendingTransaction = await balances.humanId(
+      client.client,
+      5,
+      wallet.wallet
     );
 
     wallet.addPendingTransaction(pendingTransaction);
